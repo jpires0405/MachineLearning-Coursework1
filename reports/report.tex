@@ -1,0 +1,124 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{hyperref}
+
+\title{Predicting Diamond Outcomes: A Regression Study}
+\author{José Pires — Student ID: 23115639}
+\date{}
+
+\begin{document}
+\maketitle
+\begin{center}
+  \small\url{https://github.com/jpires0405/MachineLearning-Coursework1.git}
+\end{center}
+
+\section{Exploratory Data Analysis}
+
+The dataset consists of 10{,}000 training samples and 1{,}000 test samples, each
+described by 30 input features. Three are categorical---\texttt{cut},
+\texttt{color}, \texttt{clarity}---representing ordered quality grades. The
+remaining 27 are continuous: seven physical properties (\texttt{carat},
+\texttt{depth}, \texttt{table}, \texttt{price}, \texttt{x}, \texttt{y},
+\texttt{z}) and twenty pre-computed transformations (\texttt{a1}--\texttt{a10},
+\texttt{b1}--\texttt{b10}).
+
+No missing values were found. Figure~\ref{fig:heatmap} shows Pearson
+correlations between \texttt{outcome} and the ten most linearly correlated
+numeric features. The strongest individual correlations remain moderate
+($|\rho| \leq 0.65$), indicating that no single feature is linearly
+sufficient and that complex, non-linear interactions govern the target.
+This motivated abandoning Ridge regression in favour of gradient-boosted
+trees. Continuous features were standardised; categorical features were
+one-hot encoded with unknown-category handling.
+
+\section{Model Selection}
+
+A Ridge baseline ($R^2 = 0.282$) confirmed substantial non-linear
+structure. Two ensemble candidates were then evaluated: Random Forest and
+\texttt{HistGradientBoostingRegressor}.
+
+\texttt{HistGradientBoosting} was preferred for two technical reasons.
+First, it discretises each continuous feature into up to 255 histogram bins
+before tree construction, reducing the split-search cost from $O(n)$ to
+$O(B)$ per node ($B \ll n$), yielding faster training on the 10{,}000-row
+dataset. Second, its additive, stage-wise fitting naturally captures
+high-order non-linear interactions---precisely the structure indicated by
+the moderate pairwise correlations in Figure~\ref{fig:heatmap}. All models
+were sourced exclusively from \texttt{scikit-learn}.
+
+\begin{table}[h]
+\centering
+\caption{Cross-validated performance comparison (5-Fold, seed\,=\,123).}
+\label{tab:results}
+\begin{tabular}{@{}llcc@{}}
+\toprule
+Model & Configuration & CV Mean $R^2$ & CV Std Dev \\
+\midrule
+Ridge & Baseline ($\alpha=1.0$) & 0.282 & 0.014 \\
+Random Forest & Default & 0.452 & 0.014 \\
+HistGradientBoosting & Default & 0.460 & 0.015 \\
+HistGradientBoosting & Tuned & \textbf{0.472} & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The tuned configuration used: learning rate\,=\,0.05, max iterations\,=\,300,
+max depth\,=\,3, and $\ell_2$ regularisation\,=\,0.1.
+Figure~\ref{fig:scatter} shows predicted vs.\ actual values on a 20\% hold-out
+split, demonstrating the model captures the general trend with residual spread
+attributable to the non-linear, unlabelled \texttt{a}/\texttt{b} features.
+
+\begin{figure}[h]
+\centering
+\begin{minipage}{0.54\textwidth}
+  \centering
+  \includegraphics[width=\textwidth]{figures/correlation_heatmap.png}
+  \caption{Pearson correlations: top 10 numeric features vs.\ \texttt{outcome}.
+           Moderate $|\rho|$ values justify non-linear modelling.}
+  \label{fig:heatmap}
+\end{minipage}
+\hfill
+\begin{minipage}{0.43\textwidth}
+  \centering
+  \includegraphics[width=\textwidth]{figures/pred_vs_actual.png}
+  \caption{Predicted vs.\ actual on the 20\% hold-out set (tuned
+           HistGBR).}
+  \label{fig:scatter}
+\end{minipage}
+\end{figure}
+
+\section{Training \& Evaluation}
+
+All models were evaluated using 5-Fold cross-validation
+(\texttt{KFold}, \texttt{shuffle=True}, \texttt{random\_state=123}) with $R^2$
+as the scoring metric. Preprocessing was embedded within an
+\texttt{sklearn.pipeline.Pipeline} coupled with a \texttt{ColumnTransformer},
+ensuring that scaling and encoding were fitted exclusively on each training
+fold, preventing data leakage.
+
+Hyperparameter tuning was performed via \texttt{RandomizedSearchCV} (15
+iterations) over discrete grids for learning rate, iteration count, tree depth,
+and $\ell_2$ regularisation. The best configuration raised mean $R^2$ from
+0.460 (default) to 0.472, after which the estimator was refit on the full
+training set before generating test predictions.
+
+\section{Code Supplement}
+
+The full codebase is hosted at
+\url{https://github.com/jpires0405/MachineLearning-Coursework1.git} in a modular
+structure: \texttt{src/features.py} defines the preprocessing pipeline,
+\texttt{src/models.py} registers candidates, \texttt{src/evaluate.py}
+implements CV logic, and \texttt{src/train.py} orchestrates training, tuning,
+and submission generation.
+
+All random seeds are fixed at 123. The final submission is a single-column CSV
+(\texttt{yhat}, 1{,}000 rows) validated by programmatic assertions before
+writing to disk. Feature branches were used throughout development
+(\texttt{feature/linear-baselines}, \texttt{feature/ensemble},
+\texttt{feature/tuning}), with \texttt{main} reserved for the final
+deliverable.
+
+\end{document}
