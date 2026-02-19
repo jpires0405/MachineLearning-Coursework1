@@ -17,6 +17,6 @@ def get_preprocessor(feature_names):
     return ColumnTransformer(
         transformers=[
             ("num", StandardScaler(), numeric_features),
-            ("cat", OneHotEncoder(handle_unknown="ignore"), CATEGORICAL_FEATURES),
+            ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), CATEGORICAL_FEATURES),
         ]
     )
