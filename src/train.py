@@ -1,14 +1,21 @@
 import os
 import pandas as pd
 from sklearn.pipeline import Pipeline
+from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.model_selection import RandomizedSearchCV, KFold
 
 from features import get_preprocessor
-from models import get_models
-from evaluate import evaluate_model
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 SUBMISSIONS_DIR = os.path.join(os.path.dirname(__file__), "..", "submissions")
 SUBMISSION_FILE = "CW1_submission_23115639.csv"
+
+PARAM_DISTRIBUTIONS = {
+    "model__learning_rate": [0.01, 0.05, 0.1, 0.2],
+    "model__max_iter": [100, 200, 300, 500],
+    "model__max_depth": [3, 5, 10, None],
+    "model__l2_regularization": [0.0, 0.1, 1.0, 5.0],
+}
 
 
 def main():
@@ -22,31 +29,31 @@ def main():
     # --- Prepare features / target ---
     X_train = train_df.drop(columns=["outcome"])
     y_train = train_df["outcome"]
-    feature_names = X_train.columns.tolist()
 
-    # --- Evaluate all models ---
-    results = {}
-    for name, model in get_models().items():
-        pipeline = Pipeline([
-            ("preprocessor", get_preprocessor(feature_names)),
-            ("model", model),
-        ])
-        mean_r2, std_r2 = evaluate_model(pipeline, X_train, y_train)
-        results[name] = (mean_r2, std_r2, model)
-        print(f"{name:30s}  CV Mean R²: {mean_r2:.6f}  Std Dev: {std_r2:.6f}")
-
-    # --- Select best model ---
-    best_name = max(results, key=lambda k: results[k][0])
-    best_mean, best_std, best_model = results[best_name]
-    print(f"\nBest model: {best_name} (R² = {best_mean:.6f})")
-
-    # --- Refit best model on full training set and predict ---
-    best_pipeline = Pipeline([
-        ("preprocessor", get_preprocessor(feature_names)),
-        ("model", best_model),
+    # --- Build pipeline ---
+    pipeline = Pipeline([
+        ("preprocessor", get_preprocessor(X_train.columns.tolist())),
+        ("model", HistGradientBoostingRegressor(random_state=123)),
     ])
-    best_pipeline.fit(X_train, y_train)
-    predictions = best_pipeline.predict(test_df)
+
+    # --- Hyperparameter tuning ---
+    cv = KFold(n_splits=5, shuffle=True, random_state=123)
+    search = RandomizedSearchCV(
+        pipeline,
+        param_distributions=PARAM_DISTRIBUTIONS,
+        n_iter=15,
+        cv=cv,
+        scoring="r2",
+        n_jobs=-1,
+        random_state=123,
+    )
+    search.fit(X_train, y_train)
+
+    print(f"Best CV Mean R²: {search.best_score_:.6f}")
+    print(f"Best params: {search.best_params_}")
+
+    # --- Predict with best estimator ---
+    predictions = search.best_estimator_.predict(test_df)
 
     assert len(predictions) == 1000, (
         f"Expected 1000 predictions, got {len(predictions)}"
